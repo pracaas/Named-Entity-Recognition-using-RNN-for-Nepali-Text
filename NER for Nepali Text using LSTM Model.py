@@ -1,3 +1,5 @@
+from tokenize import tokenize
+
 from keras.models import InputLayer
 from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Activation
 from keras.models import Sequential
@@ -231,7 +233,7 @@ class RNN_Model:
         self.EMBEDDING = 102
         self.LSTM_Units = 15
         self.LEARNING_RATE = 0.002
-        self.BATCH_SIZE = 10
+        self.BATCH_SIZE = 50
         self.opti = Adam(self.LEARNING_RATE)
         self.Dense_layer1 = 76
         self.DROPOUT1 = 0.5
@@ -247,6 +249,22 @@ class RNN_Model:
         self.length_distinct_tags = 0
         self.length_distinct_words = 0
 
+    def limitSentence(self,rawSentences = None):
+        newNSentences = []
+        if rawSentences != None:
+            rawSentences = rawSentences
+        else:
+            rawSentences = self.NSentences
+
+        for sentence in rawSentences:
+            if len(sentence) > 5 and len(sentence) < 51:
+                newNSentences.append(sentence)
+        print("Random Dataset sample 1 :\n")
+        print(random.choice(newNSentences))
+        print(getsentence(newNSentences, random.randrange(0, len(newNSentences), 1)))
+        print("\nRandom Dataset sample 2 :\n")
+        print(random.choice(newNSentences))
+        return newNSentences
 
     def get_parsed_senteces_tags(self,new=None):
         sentence = []
@@ -269,7 +287,7 @@ class RNN_Model:
         return sentencesonly,sentencestagonly
 
     def build_bag(self):
-        distinct_bag_words, distinct_bag_tags = find_bagword_bagtags(self.NSentences)
+        distinct_bag_words, distinct_bag_tags = self.find_bagword_bagtags()
 
         distinct_bag_words.insert(0, "PAD")
         distinct_bag_words.insert(1, "UNK")
@@ -310,20 +328,32 @@ class RNN_Model:
         y = [to_categorical(i, num_classes=self.length_distinct_tags) for i in y]
         return np.array(y)
 
+    def find_bagword_bagtags(self):
+        allWords = []
+        allTags = []
+
+        for i in self.NSentences:
+            for wod in i:
+                allWords.append(wod[0])
+                allTags.append(wod[1])
+        alldTags = list(set(allTags))
+        alldWords = list(set(allWords))
+        return alldWords, alldTags
+
     def main(self):
         time_callback = TimeHistory()
-        addrsrc = "Dataset/Nepali Text Named Entity Dataset.xlsx"
+        addrsrc = "Dataset/Dataset/Nepali Text Named Entity Dataset.xlsx"
 
         # After Preprocessing all dataset with Tagged Entity are stored into Sentences variable.
         self.NSentences = readfilen(addrsrc, 0, 1)
-
+        print(self.NSentences[2])
+        # Eg
         self.MAX_LEN = max([len(sen) for sen in self.NSentences])
-        self.NSentences = limitSentence(self.NSentences)
+        self.NSentences = self.limitSentence(self.NSentences)
         self.all_sentences_only,self.all_sentences_tag_only = self.get_parsed_senteces_tags()
         self.build_bag()
         X = self.preprocess_input_data(self.all_sentences_only)
         y = self.preprocess_output_data(self.all_sentences_tag_only)
-
 
         # Opposite of One Hot Encoding.
         def revrcatgry(y):  # It takes 3D matrix
@@ -359,11 +389,13 @@ class RNN_Model:
         history = model.fit(X_tr, y_tr, batch_size=self.BATCH_SIZE, epochs=self.EPOCHS, validation_data=(X_te, y_te),
                             verbose=1, callbacks=[time_callback])
         for i in range(0,20):
-            self.test(self.NSentences,self.MAX_LEN,self.word2idx,model,self.idx2tag)
+            self.test(model)
 
-    def test(self,NSentences,MAX_LEN,word2idx,model,idx2tag):
-        test_sentence,test_tag = getsentence(NSentences, random.randrange(0, len(NSentences), 1), False)
+    def test(self,model):
+        test_sentence,test_tag = getsentence(self.NSentences, random.randrange(0, len(self.NSentences), 1), False)
         print(test_sentence)
+        # eg: ['त्यसमा', 'पनि', 'गठबन्धनको', 'कमजोर', 'कडीलाई', 'पक्रेर', 'आफ्नो', 'लगाम', 'बलियो', 'बनाउने',
+        # 'विदेशी', 'योजनाले', 'प्रचण्डलाई', 'प्रतिकूल', 'अवस्थामा', 'पुर्याउनेछ']
         test_data = self.preprocess_input_data([test_sentence])
         p = model.predict(test_data)
         p = np.argmax(p, axis=-1)
@@ -371,40 +403,7 @@ class RNN_Model:
         print("{:15}||{}".format("Word", "Prediction"))
         print(30 * "=")
         for w,t, pred in zip(test_sentence,test_tag, p[0]):
-            print("{:15}: {:5}".format(w+" "+t, idx2tag[pred]))
-
-def limitSentence(NSentences):
-    dl = []
-    for i in range(0, len(NSentences)):
-        if len(NSentences[i]) < 5:
-            dl.append(i)
-        elif len(NSentences[i]) > 51:
-            dl.append(i)
-
-    for index in sorted(dl, reverse=True):
-        del NSentences[index]
-
-    print("Random Dataset sample 1 :\n")
-    print(random.choice(NSentences))
-    print(getsentence(NSentences, random.randrange(0, len(NSentences), 1)))
-    print("\nRandom Dataset sample 2 :\n")
-    print(random.choice(NSentences))
-
-    return NSentences
-
-
-def find_bagword_bagtags(NSentences):
-    allWords = []
-    allTags = []
-
-    for i in NSentences:
-        for wod in i:
-            allWords.append(wod[0])
-            allTags.append(wod[1])
-
-    alldTags = list(set(allTags))
-    alldWords = list(set(allWords))
-    return alldWords, alldTags
+            print("{:15}: {:5}".format(w+" "+t, self.idx2tag[pred]))
 
 
 class TimeHistory(keras.callbacks.Callback):
